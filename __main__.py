@@ -13,6 +13,7 @@ if TOKEN is None:
 
 BOTS_CHANNEL = getenv("BOTS_CHANNEL", "boat-counter")
 BOAT_CHANNEL = getenv("BOAT_CHANNEL", "daily-boat")
+CREWMATE_ROLE = getenv("CREWMATE_ROLE", "Crewmate")
 
 CURRENT_DIRECTORY = Path(__file__).parent
 STATE_PATH = CURRENT_DIRECTORY / "state.json"
@@ -25,6 +26,18 @@ options = [
 	["🤢", "nauseated_face"],
 ]
 weights = [3, 1, 0, -1, -3]
+
+get_introduction = lambda date, role_ping: f"""
+**BOAT ⋅ {date}**
+
+React with 😍 if you think the song in contention is amazing.
+React with 👍 if you think the song in contention is good.
+React with 🤷 if you think the song in contention is average.
+React with 👎 if you think the song in contention is bad.
+React with 🤢 if you think the song in contention is awful.
+
+{role_ping}
+"""
 
 def get_score(votes):
 	weighted = 0
@@ -66,6 +79,15 @@ async def prove_alive(message, command):
 
 async def die(message, command):
 	await message.reply("ok 😔", mention_author=False)
+	raise SystemExit()
+
+
+async def show_available_commands(message, command):
+	lines = ["These are my commands (some are aliases of each other and it should be obvious which those are):"]
+	for command_name in commands:
+		lines.append(f"* `{command_name}`")
+	
+	await message.reply("\n".join(lines), mention_author=False)
 
 
 async def add_troll(message, command):
@@ -102,6 +124,8 @@ def format_voters(voters):
 	
 	return "\n".join(message)
 
+
+
 async def tally(message, command):
 	async with message.channel.typing():
 		guild = message.guild
@@ -110,7 +134,6 @@ async def tally(message, command):
 				boat_channel = channel
 		
 		artist_dash_song = command.removeprefix("tally ")
-		# Otherwise, it's the Artist - Song to tally
 
 		async for boat_message in boat_channel.history(limit=4000):
 			if boat_message.content.strip() == artist_dash_song.strip():
@@ -168,21 +191,41 @@ async def tally(message, command):
 		embed.add_field(name="Duplicaters (invalidated)", value=format_voters(duplicates_skipped) or "No one!")
 		embed.add_field(name="Trolls (invalidated)", value=format_voters(trolls_skipped) or "No one!")
 		
+		embed.footer = "I'm just a computer. Double check these results!"
+
 		await message.reply(embed=embed, mention_author=True)
+
+
+async def introduce_date(message, command):
+	for channel in message.guild.text_channels:
+		if channel.name == BOAT_CHANNEL:
+			boat_channel = channel
+	
+	async with boat_channel.typing():
+		date = command.removeprefix("introduce ")
+
+		crewmate = next(role for role in message.guild.roles if role.name == CREWMATE_ROLE)
+		sent_message = await boat_channel.send(get_introduction(date, crewmate.mention))
+
 
 async def open_voting(message, command):
 	for channel in message.guild.text_channels:
 		if channel.name == BOAT_CHANNEL:
 			boat_channel = channel
 	
-	song = command.removeprefix("open ")
 	async with boat_channel.typing():
+		song = command.removeprefix("open ")
 		sent_message = await boat_channel.send(song)
 		for option_group in options:
 			create_task(sent_message.add_reaction(option_group[0]))
 
 
 commands = {
+	"help": show_available_commands,
+	"commands": show_available_commands,
+
+	"introduce": introduce_date,
+
 	"open": open_voting,
 	
 	"tally": tally,
@@ -219,14 +262,15 @@ async def on_message(message):
 	if message.channel.name != BOTS_CHANNEL:
 		return
 
-	command = message.content.replace(f"<@!{client.user.id}>", "").strip()
+	command = message.content.replace(f"<@!{client.user.id}>", "").replace(f"<@{client.user.id}>", "").strip()
 	
 	for prefix, responder in commands.items():
 		if command == prefix or command.startswith(f"{prefix} "):
 			create_task(responder(message, command))
 			return
 	
-	print(f"never found a responder for {command}")
+	print(f"{command!r} doesn't look like a valid command???")
+	print()
 
 
 @client.event
