@@ -1,4 +1,5 @@
 from asyncio import create_task, run
+from bisect import insort
 from collections import Counter, defaultdict
 from json import dumps, JSONDecodeError, loads
 from os import getenv
@@ -114,7 +115,69 @@ async def show_trolls(message, command):
 
 
 async def find_trolls(message, command):
-	await message.reply("doesn't work yet, sorry", mention_author=False)
+	async with message.channel.typing():
+		guild = message.guild
+		for channel in guild.text_channels:
+			if channel.name == BOAT_CHANNEL:
+				boat_channel = channel
+		
+		maybe_limit = command.removeprefix("troll find ").removeprefix("troll identify ")
+
+		try:
+			limit = int(maybe_limit, 10)
+		except ValueError:
+			limit = 50
+
+		songs_checked = 0
+		song_consensus = {}
+		person_votes = defaultdict(lambda: defaultdict(lambda: None))
+		troll_priority_list = []
+		async for boat_message in boat_channel.history(limit=limit):
+			song = boat_message.content.strip()
+			if "\n" in song:
+				print(f"skipping {boat_message.content!r} because it's not a valid option (multiline)")
+				continue
+			
+			if not any(reaction.emoji in option_group for option_group in options for reaction in boat_message.reactions):
+				print(f"skipping {boat_message.content!r} because it's not a valid option (no appropriate reactions)")
+				continue
+
+			print(f"analyzing votes on {song!r}")
+			songs_checked += 1
+			song_details = await interpret_song_reactions(boat_message)
+			song_consensus[song] = song_details["score"]
+			for person, votes in song_details["who_voted"].items():
+				# Everyone who voted in a valid way only has one vote
+				person_votes[person][song], = votes
+			
+		
+		for person, votes_per_song in person_votes.items():
+			participation_rate = len(votes_per_song) / songs_checked
+
+			disagreeability = 0
+			for song, vote in votes_per_song.items():
+				corresponding_option_index = next(i for i, option_group in enumerate(options) if vote in option_group)
+				vote_value = weights[corresponding_option_index]
+
+				disagreeability += abs(vote_value - song_consensus[song])
+			
+			disagreeability /= len(votes_per_song)
+
+			unusual_participation = (2*abs(0.5 - participation_rate)) + (participation_rate)*(1 - participation_rate)
+			troll_score = unusual_participation * disagreeability
+			insort(troll_priority_list, (troll_score, person))
+		
+		sentences = [f"Across the last {songs_checked} songs in #{BOAT_CHANNEL}, these people the most sus:"]
+		for troll_score, person in reversed(troll_priority_list):
+			if troll_score < 1:
+				break
+
+			if person in trolls:
+				sentences.append(f"\* `{person}` (**{troll_score:.4f}**) (*already saved as a troll*)")
+			else:
+				sentences.append(f"\* `{person}` (**{troll_score:.4f}**)")
+		
+		await message.reply("\n".join(sentences), mention_author=True)
 
 
 def format_voters(voters):
@@ -124,6 +187,52 @@ def format_voters(voters):
 	
 	return "\n".join(message)
 
+
+async def interpret_song_reactions(boat_message):
+	trolls_skipped = defaultdict(list)
+	duplicates_skipped = defaultdict(list)
+	who_voted = {}
+	for reaction in boat_message.reactions:
+		for option_group in options:
+			if reaction.emoji in option_group:
+				break
+		else:
+			print(f"skipping {reaction.emoji} because it's not a valid option")
+			continue
+		
+		async for user in reaction.users():
+			person = f"{user.name}#{user.discriminator}"
+
+			if person in trolls:
+				trolls_skipped[person].append(reaction.emoji)
+				continue
+
+			if person in who_voted or person in duplicates_skipped:
+				if person in who_voted:
+					duplicates_skipped[person].append(who_voted[person])
+					del who_voted[person]
+				
+				duplicates_skipped[person].append(reaction.emoji)
+				continue
+
+			who_voted[person] = option_group[0]
+	
+	how_votes = Counter()
+	for vote in who_voted.values():
+		how_votes[vote] += 1
+
+	try:
+		score = get_score(how_votes)
+	except ZeroDivisionError:
+		score = None
+	
+	return {
+		"duplicates_skipped": duplicates_skipped,
+		"how_votes": how_votes,
+		"score": score,
+		"trolls_skipped": trolls_skipped,
+		"who_voted": who_voted,
+	}
 
 
 async def tally(message, command):
@@ -142,45 +251,16 @@ async def tally(message, command):
 			await message.reply(f"You sure `{artist_dash_song}` is in #{BOAT_CHANNEL}? I can't find it (ask Navith if this is wrong)", mention_author=True)
 			return
 
-		
-		trolls_skipped = defaultdict(list)
-		duplicates_skipped = defaultdict(list)
-		who_voted = {}
-		for reaction in boat_message.reactions:
-			for option_group in options:
-				if reaction.emoji in option_group:
-					break
-			else:
-				print(f"skipping {reaction.emoji} because it's not a valid option")
-				continue
-			
-			async for user in reaction.users():
-				person = f"{user.name}#{user.discriminator}"
-
-				if person in trolls:
-					trolls_skipped[person].append(reaction.emoji)
-					continue
-
-				if person in who_voted or person in duplicates_skipped:
-					if person in who_voted:
-						duplicates_skipped[person].append(who_voted[person])
-					
-					duplicates_skipped[person].append(reaction.emoji)
-					del who_voted[person]
-					continue
-
-				who_voted[person] = option_group[0]
-		
-		how_votes = Counter()
-		for vote in who_voted.values():
-			how_votes[vote] += 1
+		song_details = await interpret_song_reactions(boat_message)
+		score = song_details["score"]
+		trolls_skipped = song_details["trolls_skipped"]
+		duplicates_skipped = song_details["duplicates_skipped"]
+		how_votes = song_details["how_votes"]
 
 		embed = discord.Embed()
 		embed.title = boat_message.content
 		
-		try:
-			score = get_score(how_votes)
-		except ZeroDivisionError:
+		if score is None:
 			embed.description = f"doesn't have any (valid) votes?!?! (ask Navith if this is wrong)"
 		else:
 			embed.description = f"has a BOAT score of {score:.4f}"
@@ -191,7 +271,7 @@ async def tally(message, command):
 		embed.add_field(name="Duplicaters (invalidated)", value=format_voters(duplicates_skipped) or "No one!")
 		embed.add_field(name="Trolls (invalidated)", value=format_voters(trolls_skipped) or "No one!")
 		
-		embed.footer = "I'm just a computer. Double check these results!"
+		embed.set_footer(text="I'm just a computer. Double check these results!")
 
 		await message.reply(embed=embed, mention_author=True)
 
