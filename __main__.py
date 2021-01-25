@@ -131,7 +131,6 @@ async def find_trolls(message, command):
 		songs_checked = 0
 		song_consensus = {}
 		person_votes = defaultdict(lambda: defaultdict(lambda: None))
-		troll_priority_list = []
 		async for boat_message in boat_channel.history(limit=limit):
 			song = boat_message.content.strip()
 			if "\n" in song:
@@ -150,7 +149,7 @@ async def find_trolls(message, command):
 				# Everyone who voted in a valid way only has one vote
 				person_votes[person][song], = votes
 			
-		
+		troll_priority_list = []
 		for person, votes_per_song in person_votes.items():
 			participation_rate = len(votes_per_song) / songs_checked
 
@@ -167,7 +166,7 @@ async def find_trolls(message, command):
 			troll_score = unusual_participation * disagreeability
 			insort(troll_priority_list, (troll_score, person))
 		
-		sentences = [f"Across the last {songs_checked} songs in #{BOAT_CHANNEL}, these people the most sus:"]
+		sentences = [f"Across the last {songs_checked} songs in #{BOAT_CHANNEL}, these people are the most sus:"]
 		for troll_score, person in reversed(troll_priority_list):
 			if troll_score < 1:
 				break
@@ -176,6 +175,137 @@ async def find_trolls(message, command):
 				sentences.append(f"\* `{person}` (**{troll_score:.4f}**) (*already saved as a troll*)")
 			else:
 				sentences.append(f"\* `{person}` (**{troll_score:.4f}**)")
+		
+		await message.reply("\n".join(sentences), mention_author=True)
+
+
+
+async def find_people_who_are_too_negative(message, command):
+	async with message.channel.typing():
+		guild = message.guild
+		for channel in guild.text_channels:
+			if channel.name == BOAT_CHANNEL:
+				boat_channel = channel
+		
+		maybe_limit = command.removeprefix("troll negative ")
+
+		try:
+			limit = int(maybe_limit, 10)
+		except ValueError:
+			limit = 50
+
+		songs_checked = 0
+		song_consensus = {}
+		person_votes = defaultdict(lambda: defaultdict(lambda: None))
+		async for boat_message in boat_channel.history(limit=limit):
+			song = boat_message.content.strip()
+			if "\n" in song:
+				print(f"skipping {boat_message.content!r} because it's not a valid option (multiline)")
+				continue
+			
+			if not any(reaction.emoji in option_group for option_group in options for reaction in boat_message.reactions):
+				print(f"skipping {boat_message.content!r} because it's not a valid option (no appropriate reactions)")
+				continue
+
+			print(f"analyzing votes on {song!r}")
+			songs_checked += 1
+			song_details = await interpret_song_reactions(boat_message)
+			song_consensus[song] = song_details["score"]
+			for person, votes in song_details["who_voted"].items():
+				# Everyone who voted in a valid way only has one vote
+				person_votes[person][song], = votes
+			
+		score_priority_list = []
+		for person, votes_per_song in person_votes.items():
+			participation_rate = len(votes_per_song) / songs_checked
+
+			average_score = 0
+			for song, vote in votes_per_song.items():
+				corresponding_option_index = next(i for i, option_group in enumerate(options) if vote in option_group)
+				vote_value = weights[corresponding_option_index]
+
+				average_score += vote_value
+			
+			average_score /= len(votes_per_song)
+			unusual_participation = 0.5 + abs(0.5 - participation_rate)
+			
+			overly_intense_voting = average_score * unusual_participation
+			insort(score_priority_list, (overly_intense_voting, person))
+		
+		sentences = [f"Across the last {songs_checked} songs in #{BOAT_CHANNEL}, these people are the most negative:"]
+		for average_score, person in score_priority_list:
+			if average_score > -0.1:
+				break
+
+			if person in trolls:
+				sentences.append(f"\* `{person}` (**{average_score:.4f}** across **{len(person_votes[person])} votes**) (*already saved as a troll*)")
+			else:
+				sentences.append(f"\* `{person}` (**{average_score:.4f}** across **{len(person_votes[person])} votes**)")
+		
+		await message.reply("\n".join(sentences), mention_author=True)
+
+
+async def find_people_who_are_too_positive(message, command):
+	async with message.channel.typing():
+		guild = message.guild
+		for channel in guild.text_channels:
+			if channel.name == BOAT_CHANNEL:
+				boat_channel = channel
+		
+		maybe_limit = command.removeprefix("troll positive ")
+
+		try:
+			limit = int(maybe_limit, 10)
+		except ValueError:
+			limit = 50
+
+		songs_checked = 0
+		song_consensus = {}
+		person_votes = defaultdict(lambda: defaultdict(lambda: None))
+		async for boat_message in boat_channel.history(limit=limit):
+			song = boat_message.content.strip()
+			if "\n" in song:
+				print(f"skipping {boat_message.content!r} because it's not a valid option (multiline)")
+				continue
+			
+			if not any(reaction.emoji in option_group for option_group in options for reaction in boat_message.reactions):
+				print(f"skipping {boat_message.content!r} because it's not a valid option (no appropriate reactions)")
+				continue
+
+			print(f"analyzing votes on {song!r}")
+			songs_checked += 1
+			song_details = await interpret_song_reactions(boat_message)
+			song_consensus[song] = song_details["score"]
+			for person, votes in song_details["who_voted"].items():
+				# Everyone who voted in a valid way only has one vote
+				person_votes[person][song], = votes
+			
+		score_priority_list = []
+		for person, votes_per_song in person_votes.items():
+			participation_rate = len(votes_per_song) / songs_checked
+
+			average_score = 0
+			for song, vote in votes_per_song.items():
+				corresponding_option_index = next(i for i, option_group in enumerate(options) if vote in option_group)
+				vote_value = weights[corresponding_option_index]
+
+				average_score += vote_value
+			
+			average_score /= len(votes_per_song)
+			unusual_participation = abs(0.5 - participation_rate) + 0.5
+			
+			overly_intense_voting = average_score * unusual_participation
+			insort(score_priority_list, (overly_intense_voting, person))
+		
+		sentences = [f"Across the last {songs_checked} songs in #{BOAT_CHANNEL}, these people are the most positive:"]
+		for average_score, person in reversed(score_priority_list):
+			if average_score < 1.2:
+				break
+
+			if person in trolls:
+				sentences.append(f"\* `{person}` (**{average_score:.4f}** across **{len(person_votes[person])} votes**) (*already saved as a troll*)")
+			else:
+				sentences.append(f"\* `{person}` (**{average_score:.4f}** across **{len(person_votes[person])} votes**)")
 		
 		await message.reply("\n".join(sentences), mention_author=True)
 
@@ -322,6 +452,10 @@ commands = {
 	
 	"troll find": find_trolls,
 	"troll identify": find_trolls,
+	
+	"troll positive": find_people_who_are_too_positive,
+
+	"troll negative": find_people_who_are_too_negative,
 	
 	"you there": prove_alive,
 
