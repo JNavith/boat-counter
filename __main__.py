@@ -208,8 +208,10 @@ async def create_troll_scores(boat_channel, scores_wanted, limit):
 
 async def find_trolls(message, args, score_type, threshold, description):
 	async with message.channel.typing():
+		skip_trolls = "skip known" in args or "new" in args
+
 		try:
-			limit = int(args, 10)
+			limit = int(args.split()[0], 10)
 		except ValueError:
 			limit = 50
 
@@ -236,6 +238,8 @@ async def find_trolls(message, args, score_type, threshold, description):
 					continue
 
 			if person in trolls:
+				if skip_trolls:
+					continue
 				sentences.append(f"\* `{person}` (**{troll_score:.4f}** score with **{troll_scores[person][TOTAL_VOTES]}** uninvalidated votes) (*already saved as a troll*)")
 			else:
 				sentences.append(f"\* `{person}` (**{troll_score:.4f}** score with **{troll_scores[person][TOTAL_VOTES]}** uninvalidated votes)")
