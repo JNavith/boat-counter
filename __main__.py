@@ -90,7 +90,7 @@ async def die(message, command, args):
 
 
 async def show_available_commands(message, command, args):
-	lines = ["These are my commands (some are aliases of each other and it should be obvious which those are):"]
+	lines = ["These are my commands:"]
 	for command_name in commands:
 		lines.append(f"* `{command_name}`")
 	
@@ -392,42 +392,18 @@ async def open_voting(message, command, args):
 
 commands = {
 	"help": [show_available_commands, TRUSTED_PEOPLE],
-	"commands": [show_available_commands, TRUSTED_PEOPLE],
-
 	"introduce": [introduce_date, TRUSTED_PEOPLE],
-
 	"open": [open_voting, TRUSTED_PEOPLE],
-	
 	"tally": [tally, TRUSTED_PEOPLE],
-
-	"trolls": [show_trolls, TRUSTED_PEOPLE],
 	"troll list": [show_trolls, TRUSTED_PEOPLE],
-	"list trolls": [show_trolls, TRUSTED_PEOPLE],
-
 	"troll add": [add_troll, TRUSTED_PEOPLE],
-	"add troll": [add_troll, TRUSTED_PEOPLE],
-	
 	"troll remove": [remove_troll, TRUSTED_PEOPLE],
-	"remove troll": [remove_troll, TRUSTED_PEOPLE],
-	
 	"troll find": [find_people_with_high_composite_troll_score, TRUSTED_PEOPLE],
-	"troll identify": [find_people_with_high_composite_troll_score, TRUSTED_PEOPLE],
-	"troll composite": [find_people_with_high_composite_troll_score, TRUSTED_PEOPLE],
-
 	"troll extreme": [find_people_who_are_too_extreme, TRUSTED_PEOPLE],
-	
 	"troll disagree": [find_people_who_are_too_disagreeable, TRUSTED_PEOPLE],
-	"troll consensus": [find_people_who_are_too_disagreeable, TRUSTED_PEOPLE],
-
-	"troll same": [find_people_who_dont_use_enough_different_voting_options, TRUSTED_PEOPLE],
 	"troll distribution": [find_people_who_dont_use_enough_different_voting_options, TRUSTED_PEOPLE],
-	"troll limited": [find_people_who_dont_use_enough_different_voting_options, TRUSTED_PEOPLE],
-	
 	"troll duplicate": [find_people_who_are_too_inclined_to_duplicate, TRUSTED_PEOPLE],
-	
 	"you there": [prove_alive, THE_MASSES],
-	"you there?": [prove_alive, THE_MASSES],
-
 	"die": [die, TRUSTED_PEOPLE],
 }
 
