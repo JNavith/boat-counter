@@ -1,4 +1,4 @@
-from asyncio import create_task, run
+from asyncio import create_task, gather, run
 from bisect import insort
 from collections import Counter, defaultdict
 from json import dumps, JSONDecodeError, loads
@@ -390,8 +390,8 @@ async def open_voting(message, command, args):
 	async with boat_channel.typing():
 		song = args
 		sent_message = await boat_channel.send(song)
-		for option_group in options:
-			create_task(sent_message.add_reaction(option_group[0]))
+		tasks = [create_task(sent_message.add_reaction(option_group[0])) for option_group in options]
+		await gather(*tasks)
 
 
 commands = {
