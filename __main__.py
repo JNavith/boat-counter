@@ -1,6 +1,7 @@
 from asyncio import create_task, gather, run
 from bisect import insort
 from collections import Counter, defaultdict
+from io import StringIO
 from json import dumps, JSONDecodeError, loads
 from os import getenv
 from pathlib import Path
@@ -212,7 +213,7 @@ async def find_trolls(message, args, score_type, threshold, description):
 
 		try:
 			limit = int(args.split()[0], 10)
-		except ValueError:
+		except (IndexError, ValueError):
 			limit = 50
 
 		guild = message.guild
@@ -244,12 +245,13 @@ async def find_trolls(message, args, score_type, threshold, description):
 			else:
 				sentences.append(f"\* `{person}` (**{troll_score:.4f}** score with **{troll_scores[person][TOTAL_VOTES]}** uninvalidated votes)")
 		
-		limit = 2000
+		message_limit = 2000
 		sentences_joined = "\n".join(sentences)
-		if len(sentences_joined) >= limit:
-			sentences_joined = sentences_joined[:limit - 5]
-			sentences_joined += "..."
-		await message.reply(sentences_joined, mention_author=True)
+		if len(sentences_joined) >= message_limit:
+			short_message = sentences_joined[:message_limit - 5] + "..."
+			await message.reply(short_message, file=discord.File(StringIO(sentences_joined), filename=f"Troll finding.txt"), mention_author=True)
+		else:
+			await message.reply(sentences_joined, mention_author=True)
 
 
 async def find_people_with_high_composite_troll_score(message, command, args):
@@ -280,7 +282,7 @@ def format_voters(voters):
 	return "\n".join(message)
 
 
-async def interpret_song_reactions(boat_message):
+async def interpret_song_reactions(boat_message, exclusively = None):
 	trolls_skipped = defaultdict(list)
 	duplicates_skipped = defaultdict(list)
 	who_voted = {}
@@ -294,6 +296,10 @@ async def interpret_song_reactions(boat_message):
 		
 		async for user in reaction.users():
 			person = f"{user.name}#{user.discriminator}"
+
+			if exclusively is not None:
+				if person not in exclusively:
+					continue
 
 			if person in trolls:
 				trolls_skipped[person].append(reaction.emoji)
@@ -370,6 +376,50 @@ async def tally(message, command, args):
 		await message.reply(embed=embed, mention_author=True)
 
 
+async def investigate(message, command, args):
+	async with message.channel.typing():
+		guild = message.guild
+		for channel in guild.text_channels:
+			if channel.name == BOAT_CHANNEL:
+				boat_channel = channel
+
+		person = args
+
+	limit = 100
+	sentences = []
+	async for boat_message in boat_channel.history(limit=limit):
+		song = boat_message.content.strip()
+		if "\n" in song:
+			print(f"skipping {boat_message.content!r} because it doesn't look like a song (multiline)")
+			continue
+		
+		if not any(reaction.emoji in option_group for option_group in options for reaction in boat_message.reactions):
+			print(f"skipping {boat_message.content!r} because it doesn't look like a song (no appropriate reactions)")
+			continue
+
+		song_details = await interpret_song_reactions(boat_message, {person})
+		trolls_skipped = song_details["trolls_skipped"]
+		duplicates_skipped = song_details["duplicates_skipped"]
+		how_votes = song_details["how_votes"]
+
+		votes = trolls_skipped.get(person) or duplicates_skipped.get(person) or how_votes.keys()
+
+		if not votes:
+			continue
+		
+		sentences.append(f"\* {song}: {' & '.join(votes)}")
+	
+	message_limit = 2000
+	sentences_joined = "\n".join(sentences)
+	if len(sentences_joined) >= message_limit:
+		short_message = sentences_joined[:message_limit - 5] + "..."
+		await message.reply(short_message, file=discord.File(StringIO(sentences_joined), filename=f"Investigation of {person}.txt"), mention_author=True)
+	elif sentences_joined:
+		await message.reply(sentences_joined, mention_author=True)
+	else:
+		await message.reply(f"`{person}` doesn't seem to have voted on any of the last {limit} songs (ask Navith if this is a mistake)", mention_author=True)
+
+
 async def introduce_date(message, command, args):
 	for channel in message.guild.text_channels:
 		if channel.name == BOAT_CHANNEL:
@@ -399,6 +449,7 @@ commands = {
 	"introduce": [introduce_date, TRUSTED_PEOPLE],
 	"open": [open_voting, TRUSTED_PEOPLE],
 	"tally": [tally, TRUSTED_PEOPLE],
+	"investigate": [investigate, TRUSTED_PEOPLE],
 	"troll list": [show_trolls, TRUSTED_PEOPLE],
 	"troll add": [add_troll, TRUSTED_PEOPLE],
 	"troll remove": [remove_troll, TRUSTED_PEOPLE],
