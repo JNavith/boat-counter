@@ -470,10 +470,19 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
-	if not any(user.id == client.user.id for user in message.mentions):
+	if message.author.id == client.user.id:
 		return
-
-	command = message.content.replace(f"<@!{client.user.id}>", "").replace(f"<@{client.user.id}>", "").strip()
+	
+	i_was_mentioned = any(user.id == client.user.id for user in message.mentions)
+	my_role_was_mentioned = [role for role in message.role_mentions for member in role.members if member.id == client.user.id]
+	if not (i_was_mentioned or my_role_was_mentioned):
+		return
+	
+	command = message.content.removeprefix(f"<@!{client.user.id}>").removeprefix(f"<@{client.user.id}>")
+	for role in my_role_was_mentioned:
+		command = command.removeprefix(f"<@&{role.id}>")
+	
+	command = command.strip()
 	
 	unauthorized = False
 	for prefix, [responder, authorized_roles] in commands.items():
