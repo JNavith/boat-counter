@@ -17,7 +17,7 @@ BOAT_CHANNEL = getenv("BOAT_CHANNEL", "daily-boat")
 
 CREWMATE_ROLE = getenv("CREWMATE_ROLE", "Crewmate")
 DEV_ROLE = getenv("DEV_ROLE", "Dev")
-STAFF_ROLE = getenv("STAFF_ROLE", "Staff")
+STAFF_ROLE = getenv("STAFF_ROLE", "Quartermaster")
 TRUSTED_ROLE = getenv("TRUSTED_ROLE", "Trusted")
 
 TRUSTED_PEOPLE = {DEV_ROLE, STAFF_ROLE, TRUSTED_ROLE}
