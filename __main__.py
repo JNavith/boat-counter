@@ -496,7 +496,9 @@ async def on_message(message):
 			else:
 				unauthorized = True
 	
-	if not unauthorized:
+	if unauthorized:
+		print(f"lookin' kinda sussy tryna use a command you're not allowed to... ({command!r})")
+	else:
 		print(f"{command!r} doesn't look like a valid command???")
 		print()
 
