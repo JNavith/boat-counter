@@ -35,7 +35,7 @@ options = [
 ]
 weights = [3, 1, 0, -1, -3]
 
-get_introduction = lambda date, role_ping: f"""
+get_introduction = lambda date: f"""
 **BOAT ⋅ {date}**
 
 React with {options[0][0]} if you think the song in contention is amazing.
@@ -43,8 +43,16 @@ React with {options[1][0]} if you think the song in contention is good.
 React with {options[2][0]} if you think the song in contention is average.
 React with {options[3][0]} if you think the song in contention is bad.
 React with {options[4][0]} if you think the song in contention is awful.
+"""
 
-{role_ping}
+get_today_s_outro = lambda role_mention: f"""
+👆 Those are today's songs to vote on!
+
+{role_mention}
+"""
+
+get_last_day_reminder = lambda date: f"""
+Last day to vote for {date}!
 """
 
 def get_score(votes):
@@ -427,9 +435,7 @@ async def introduce_date(message, command, args):
 	
 	async with boat_channel.typing():
 		date = args
-
-		crewmate = next(role for role in message.guild.roles if role.name == CREWMATE_ROLE)
-		await boat_channel.send(get_introduction(date, crewmate.mention))
+		await boat_channel.send(get_introduction(date))
 
 
 async def open_voting(message, command, args):
@@ -444,10 +450,36 @@ async def open_voting(message, command, args):
 		await gather(*tasks)
 
 
+
+async def last_day_to_vote(message, command, args):
+	guild = message.guild
+	for channel in guild.text_channels:
+		if channel.name == BOAT_CHANNEL:
+			boat_channel = channel
+		
+	async with boat_channel.typing():
+		date = args.strip()
+		boat_day = f"**BOAT ⋅ {date}**"
+
+		async for boat_day_message in boat_channel.history(limit=4000):
+			lines = boat_day_message.content.strip().splitlines()
+			if lines and (lines[0] == boat_day):
+				break
+		else:
+			await message.reply(f"You sure `{boat_day}` was opened in #{BOAT_CHANNEL}? I can't find it (ask Navith if this is wrong)", mention_author=True)
+			return
+		
+		crewmate = next(role for role in message.guild.roles if role.name == CREWMATE_ROLE)
+		
+		await boat_channel.send(get_today_s_outro(crewmate.mention))
+		await boat_day_message.reply(get_last_day_reminder(date), mention_author=False)
+
+
 commands = {
 	"help": [show_available_commands, TRUSTED_PEOPLE],
 	"introduce": [introduce_date, TRUSTED_PEOPLE],
 	"open": [open_voting, TRUSTED_PEOPLE],
+	"last": [last_day_to_vote, TRUSTED_PEOPLE],
 	"tally": [tally, TRUSTED_PEOPLE],
 	"investigate": [investigate, TRUSTED_PEOPLE],
 	"troll list": [show_trolls, TRUSTED_PEOPLE],
